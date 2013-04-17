@@ -21,3 +21,8 @@ SGCTTracker
 =========================
  * Set scale factor for tracker if different units then meters
 
+SGCTNetwork
+==========================
+Measure roundtrip for messages
+Set barrier ska ske efter OGL init
+

@@ -21,5 +21,3 @@ pdflatex refman
 goto :repeat
 :skip
 endlocal
-makeindex refman.idx
-pdflatex refman

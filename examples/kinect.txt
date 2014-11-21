@@ -1,0 +1,317 @@
+====== Using a Microsoft Kinect ======
+<WRAP center round alert 60%>Update in progress: Updating samples and files to SGCT 1.5+ [2013-06-11]</WRAP>
+
+This example shows how to get skeleton data from a Microsoft Kinect. SGCT is a VRPN client and can receive tracking data from any VRPN server. This example is based on the [[develop:sgcttutorials:spinningtriangle:spinningtriangle|spinning triangle]] code and enables the user to scale the triangle depending on the distance between the hands.
+
+\\ \\ 
+{{:develop:sgcttutorials:kinect_example.png|}}
+\\ 
+
+==== Step 1 ====
+Install [[http://projects.ict.usc.edu/mxr/faast/|FAAST]] on a windows computer that you want to use as VRPN server. Follow the instructions on the FAAST webpage. Then:
+  - Connect the Kinect
+  - Start the application
+  - Choose your tracker (Microsoft or OpenNI)
+  - Press the connect button
+
+\\ 
+Now it should look something like the image below.\\ \\ 
+
+{{:develop:sgcttutorials:faast.png|}}
+
+\\ 
+==== Step 2 ====
+The VRPN server supports up to four skeletons with the following VRPN names:
+
+  - Tracker0
+  - Tracker1
+  - Tracker2
+  - Tracker3
+\\ 
+SGCT supports multiple trackers but this example will connect to the first skeleton tracker to show the concept. Each skeleton is represented by different positional sensors (joints).
+
+^ Sensor  ^ Joint           |   ^ Sensor  ^ Joint            ^
+| 0       | Head            |   | 12      | Right Elbow      |
+| 1       | Neck            |   | 13      | Right Wrist      |
+| 2       | Torso           |   | 14      | Right Hand       |
+| 3       | Waist           |   | 15      | Right Fingertip  |
+| 4       | Left Collar     |   | 16      | Left Hip         |
+| 5       | Left Shoulder   |   | 17      | Left Knee        |
+| 6       | Left Elbow      |   | 18      | Left Ankle       |
+| 7       | Left Wrist      |   | 19      | Left Foot        |
+| 8       | Left Hand       |   | 20      | Right Hip        |
+| 9       | Left Fingertip  |   | 21      | Right Knee       |
+| 10      | Right Collar    |   | 22      | Right Ankle      |
+| 11      | Right Shoulder  |   | 23      | Right Foot       |
+
+\\ 
+If all joints will be used you can create a config file like the one below:
+\\ 
+<file xml kinect_one_tracker.xml>
+<?xml version="1.0" ?>
+<Cluster masterAddress="127.0.0.1">
+	<Node ip="127.0.0.1" port="20401">
+		<Window fullscreen="false" numberOfSamples="4">
+			<Stereo type="none" />
+			<Pos x="0" y="0" />
+			<!-- 16:9 aspect ratio -->
+			<Size x="960" y="540" />
+		</Window>
+		<Viewport>
+			<Pos x="0.0" y="0.0" />
+			<Size x="1.0" y="1.0" />
+			<Viewplane>
+				<!-- Lower left -->
+				<Pos x="-1.778" y="-1.0" z="0.0" />
+				<!-- Upper left -->
+				<Pos x="-1.778" y="1.0" z="0.0" />
+				<!-- Upper right -->
+				<Pos x="1.778" y="1.0" z="0.0" />
+			</Viewplane>
+		</Viewport>
+	</Node>
+	<User eyeSeparation="0.069">
+		<Pos x="0.0" y="0.0" z="1.5" />
+	</User>
+	<Tracker name="Kinect0">
+		<Device name="Head">
+			<Sensor id="0" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Neck">
+			<Sensor id="1" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Torso">
+			<Sensor id="2" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Waist">
+			<Sensor id="3" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Collar">
+			<Sensor id="4" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Shoulder">
+			<Sensor id="5" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Elbow">
+			<Sensor id="6" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Wrist">
+			<Sensor id="7" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Hand">
+			<Sensor id="8" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Fingertip">
+			<Sensor id="9" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Collar">
+			<Sensor id="10" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Shoulder">
+			<Sensor id="11" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Elbow">
+			<Sensor id="12" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Wrist">
+			<Sensor id="13" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Hand">
+			<Sensor id="14" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Fingertip">
+			<Sensor id="15" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Hip">
+			<Sensor id="16" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Knee">
+			<Sensor id="17" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Ankle">
+			<Sensor id="18" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Left Foot">
+			<Sensor id="19" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Hip">
+			<Sensor id="20" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Knee">
+			<Sensor id="21" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Ankle">
+			<Sensor id="22" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Foot">
+			<Sensor id="23" vrpnAddress="Tracker0@localhost" />
+		</Device>
+	</Tracker>
+</Cluster>
+</file>
+\\ 
+In this example just the data from the hands will be used so use following config file instead.
+\\ 
+<file xml kinect_hands_only.xml>
+<?xml version="1.0" ?>
+<Cluster masterAddress="127.0.0.1">
+	<Node ip="127.0.0.1" port="20401">
+		<Window fullscreen="false" numberOfSamples="4">
+			<Stereo type="none" />
+			<Pos x="0" y="0" />
+			<!-- 16:9 aspect ratio -->
+			<Size x="960" y="540" />
+		</Window>
+		<Viewport>
+			<Pos x="0.0" y="0.0" />
+			<Size x="1.0" y="1.0" />
+			<Viewplane>
+				<!-- Lower left -->
+				<Pos x="-1.778" y="-1.0" z="0.0" />
+				<!-- Upper left -->
+				<Pos x="-1.778" y="1.0" z="0.0" />
+				<!-- Upper right -->
+				<Pos x="1.778" y="1.0" z="0.0" />
+			</Viewplane>
+		</Viewport>
+	</Node>
+	<User eyeSeparation="0.069">
+		<Pos x="0.0" y="0.0" z="1.5" />
+	</User>
+	<Tracker name="Kinect0">
+		<Device name="Left Hand">
+			<Sensor id="8" vrpnAddress="Tracker0@localhost" />
+		</Device>
+		<Device name="Right Hand">
+			<Sensor id="14" vrpnAddress="Tracker0@localhost" />
+		</Device>
+	</Tracker>
+</Cluster>
+</file>
+
+\\ 
+<note tip>If you will run your application elsewhere then on the server simply replace "localhost" with the IP address of your server.</note>
+==== Final code ====
+<file cpp main.cpp>
+#include "sgct.h"
+
+sgct::Engine * gEngine;
+
+void myInitOGLFun();
+void myDrawFun();
+void myPreSyncFun();
+void myEncodeFun();
+void myDecodeFun();
+
+double curr_time = 0.0;
+float size_factor = 0.5f;
+
+//pointer to a left hand
+sgct::SGCTTrackingDevice * leftHand = NULL;
+//pointer to a right hand
+sgct::SGCTTrackingDevice * rightHand = NULL;
+
+bool error = false;
+
+int main( int argc, char* argv[] )
+{
+
+	// Allocate
+	gEngine = new sgct::Engine( argc, argv );
+
+	// Bind your functions
+	gEngine->setInitOGLFunction( myInitOGLFun );
+	gEngine->setDrawFunction( myDrawFun );
+	gEngine->setPreSyncFunction( myPreSyncFun );
+	sgct::SharedData::Instance()->setEncodeFunction(myEncodeFun);
+	sgct::SharedData::Instance()->setDecodeFunction(myDecodeFun);
+
+	// Init the engine
+	if( !gEngine->init() )
+	{
+		delete gEngine;
+		return EXIT_FAILURE;
+	}
+
+	// Main loop
+	gEngine->render();
+
+	// Clean up (de-allocate)
+	delete gEngine;
+
+	// Exit program
+	exit( EXIT_SUCCESS );
+}
+
+void myInitOGLFun()
+{
+	glEnable(GL_DEPTH_TEST);
+ 
+	//get the tracking pointers
+	sgct::SGCTTracker * tracker = sgct::Engine::getTrackingManager()->getTrackerPtr("Kinect0");
+	if(tracker != NULL)
+	{
+		leftHand	= tracker->getDevicePtr("Left Hand");
+		rightHand	= tracker->getDevicePtr("Right Hand");
+	}
+ 
+	if(leftHand == NULL || rightHand == NULL)
+	{
+		error = true;
+		sgct::MessageHandler::Instance()->print("Failed to get pointers to hand trackers!\n");
+	}
+}
+
+void myDrawFun()
+{
+	float speed = 50.0f;
+	glRotatef(static_cast<float>( curr_time ) * speed, 0.0f, 1.0f, 0.0f);
+
+	//render a single triangle
+	glBegin(GL_TRIANGLES);
+		glColor3f(1.0f, 0.0f, 0.0f); //Red
+		glVertex3f(-0.5f * size_factor, -0.5f * size_factor, 0.0f);
+ 
+		glColor3f(0.0f, 1.0f, 0.0f); //Green
+		glVertex3f(0.0f, 0.5f * size_factor, 0.0f);
+ 
+		glColor3f(0.0f, 0.0f, 1.0f); //Blue
+		glVertex3f(0.5f * size_factor, -0.5f * size_factor, 0.0f);
+	glEnd();
+}
+
+void myPreSyncFun()
+{
+	//set the time only on the master
+	if( gEngine->isMaster() )
+	{
+		//get the time in seconds
+		curr_time = sgct::Engine::getTime();
+
+		if(!error)
+		{
+			glm::dvec3 leftPos = leftHand->getPosition();
+			glm::dvec3 rightPos = rightHand->getPosition();
+			float dist = static_cast<float>(glm::length(leftPos - rightPos));
+			size_factor = (dist < 2.0f && dist > 0.2f) ? dist : 0.5f;
+		}
+	}
+}
+
+void myEncodeFun()
+{
+	sgct::SharedData::Instance()->writeDouble( curr_time );
+	sgct::SharedData::Instance()->writeFloat( size_factor );
+}
+
+void myDecodeFun()
+{
+	curr_time = sgct::SharedData::Instance()->readDouble();
+	size_factor = sgct::SharedData::Instance()->readFloat();
+}
+</file>
+
+{{indexmenu_n>12}}
+
+~~DISCUSSION:on~~
+{{tag>Microsoft_Kinect SGCT VR VRPN Tracking OpenGL}}

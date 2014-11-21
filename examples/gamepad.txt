@@ -1,0 +1,153 @@
+====== Gamepads, joysticks & steering wheels ======
+<WRAP center round alert 60%>Update in progress: Updating samples and files to SGCT 1.5+ [2013-06-11]</WRAP>
+
+This tutorial will demonstrate how to use a gamepad, joystick, steering wheel or other gadgets together with SGCT. Up to 16 devices simultaneously are supported. SGCT wraps GLFW’s joystick callbacks. Just plug in your input device and start the application.
+\\ \\ 
+If more devices are needed SGCT also supports VRPN devices which are set up in the configuration file in the same way as using the [[develop:sgcttutorials:kinect:kinect|Xbox kinect sample]].\\ 
+\\ 
+{{:develop:sgcttutorials:gamepad.png?direct&|}}\\ 
+\\ 
+==== Step 1 ====
+First of all we must check if a joystick is present. This tutorial will show how to use a single joystick (or gamepad or any similar input device). But it’s very simple to extend this code to use more devices. Create a variable that keeps track if the device is connected or not. 
+<code cpp>
+int joyStick1Present = GL_FALSE;
+</code>
+To check if the device is connected use the following code:
+<code cpp>
+joyStick1Present = sgct::Engine::getJoystickParam( GLFW_JOYSTICK_1, GLFW_PRESENT );
+</code>
+//Note that GLFW_JOYSTICK_1 is just an integer which is 0. GLFW_JOYSTICK_2 = 1 etc…This means that all 16 joysticks can be checked in a loop.//
+
+==== Step 2 ====
+There are two types of data that can be polled from a joystick (or similar gadget).
+  - Analog data from axes with values ranging from -1.0 to 1.0
+  - Digital data from buttons with a binary  value (0 or 1)
+
+To keep track of how many of these values that the current joystick create the following variables:
+<code cpp>
+int numberOfAxes = 0;
+int numberOfButtons = 0;
+</code>
+Now poll the joystick.
+<code cpp>
+numberOfAxes = sgct::Engine::getJoystickParam( GLFW_JOYSTICK_1, GLFW_AXES );
+numberOfButtons = sgct::Engine::getJoystickParam( GLFW_JOYSTICK_1, GLFW_BUTTONS );
+</code>
+
+==== Step 3 ====
+To store all the analog (float) and digital (unsigned char) values create two array pointers (global).
+<code cpp>
+float * axesPos;
+unsigned char * buttons;
+</code>
+Next, allocate the arrays.
+<code cpp>
+if( numberOfAxes > 0 )
+	axesPos = new float[numberOfAxes];
+
+if( numberOfButtons > 0 )
+	buttons = new unsigned char[numberOfButtons];
+</code>
+==== Step 4 ====
+Write a pre sync callback, poll the device and print the values to the terminal.
+<code cpp>
+void myPreSyncFun()
+{
+	if( joyStick1Present == GL_TRUE )
+	{
+		sgct::Engine::getJoystickAxes( GLFW_JOYSTICK_1, axesPos, numberOfAxes );
+		for(int i=0; i<numberOfAxes; i++)
+			sgct::MessageHandler::Instance()->print("%.3f ", axesPos[i]);
+
+		sgct::Engine::getJoystickButtons( GLFW_JOYSTICK_1, buttons, numberOfButtons );
+		for(int i=0; i<numberOfButtons; i++)
+			sgct::MessageHandler::Instance()->print("%d ", buttons[i]);
+
+		sgct::MessageHandler::Instance()->print("\r");
+	}
+}
+</code>
+A Logitech gamepad gives the following output.\\ 
+{{:develop:sgcttutorials:joystick_terminal.png?direct&|}}\\ \\ 
+Using an Xbox 360 joypad will result in 5 axes (analog inputs) instead and 10 buttons. The number of axes and buttons reported may differ for the same device in different OS/driver versions.
+==== Final code ====
+<file cpp main.cpp>
+#include "sgct.h"
+
+sgct::Engine * gEngine;
+
+void myDrawFun();
+void myPreSyncFun();
+
+int joyStick1Present = GL_FALSE;
+int numberOfAxes = 0;
+int numberOfButtons = 0;
+float * axesPos;
+unsigned char * buttons;
+
+int main( int argc, char* argv[] )
+{
+	gEngine = new sgct::Engine( argc, argv );
+
+	if( !gEngine->init() )
+	{
+		delete gEngine;
+		return EXIT_FAILURE;
+	}
+
+	joyStick1Present = sgct::Engine::getJoystickParam( GLFW_JOYSTICK_1, GLFW_PRESENT );
+	if( joyStick1Present == GL_TRUE )
+	{
+		sgct::MessageHandler::Instance()->print("Joystick 1 is present.\n");
+
+		numberOfAxes = sgct::Engine::getJoystickParam( GLFW_JOYSTICK_1, GLFW_AXES );
+		numberOfButtons = sgct::Engine::getJoystickParam( GLFW_JOYSTICK_1, GLFW_BUTTONS );
+
+		sgct::MessageHandler::Instance()->print("Number of axes %d\nNumber of buttons %d\n", 
+			numberOfAxes,
+			numberOfButtons);
+
+		if( numberOfAxes > 0 )
+			axesPos = new float[numberOfAxes];
+
+		if( numberOfButtons > 0 )
+			buttons = new unsigned char[numberOfButtons];
+	}
+
+	gEngine->setPreSyncFunction( myPreSyncFun );
+
+	// Main loop
+	gEngine->render();
+
+	if( numberOfAxes > 0 )
+		delete [] axesPos;
+	if( numberOfButtons > 0 )
+		delete [] buttons;
+
+	// Clean up
+	delete gEngine;
+
+	// Exit program
+	exit( EXIT_SUCCESS );
+}
+
+void myPreSyncFun()
+{
+	if( joyStick1Present == GL_TRUE )
+	{
+		sgct::Engine::getJoystickAxes( GLFW_JOYSTICK_1, axesPos, numberOfAxes );
+		for(int i=0; i<numberOfAxes; i++)
+			sgct::MessageHandler::Instance()->print("%.3f ", axesPos[i]);
+
+		sgct::Engine::getJoystickButtons( GLFW_JOYSTICK_1, buttons, numberOfButtons );
+		for(int i=0; i<numberOfButtons; i++)
+			sgct::MessageHandler::Instance()->print("%d ", buttons[i]);
+
+		sgct::MessageHandler::Instance()->print("\r");
+	}
+}
+</file>
+
+{{indexmenu_n>8}}
+~~DISCUSSION:on~~
+{{tag>Cluster C++ OpenGL VR Gamepad Joystick Steering_wheel Gadgets}}

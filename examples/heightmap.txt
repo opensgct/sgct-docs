@@ -1,0 +1,692 @@
+====== Height mapping ======
+<WRAP center round alert 60%>Update in progress: Updating samples and files to SGCT 1.5+ [2013-06-11]</WRAP>
+
+This tutorial will show how to perform height mapping on a grid in shader code. It will use textures for height and normal values. 
+
+This tutorial makes use of cluster syncronization, textures and shaders so make sure you know how to utilize all of these features in the sgct framework before proceeding. This tutorial will move on pretty fast. Previous tutorials that explains everything in more detail are available:
+  * [[develop:sgcttutorials:spinningtriangle:spinningtriangle|Cluster syncronization]]
+  * [[develop:sgcttutorials:texturing:texturing|Texturing]]
+  * [[develop:sgcttutorials:shading:shading|Shading]]
+\\ 
+
+{{:develop:sgcttutorials:height_mapping.png?direct&|}}\\
+\\
+This tutorial will use a basic sgct setup that only creates a empty window as foundation and will explain the steps to get the height mapping going.
+\\
+==== Step 1 ====
+Start with a plain sgct application that does nothing but opening a window.
+<code cpp>
+#include <stdlib.h>
+#include <stdio.h>
+#include "sgct.h"
+
+sgct::Engine * gEngine;
+
+int main( int argc, char* argv[] )
+{
+
+	// Allocate
+	gEngine = new sgct::Engine( argc, argv );
+
+	// Init the engine
+	if( !gEngine->init() )
+	{
+		delete gEngine;
+		return EXIT_FAILURE;
+	}
+
+	// Main loop
+	gEngine->render();
+
+	// Clean up (de-allocate)
+	delete gEngine;
+
+	// Exit program
+	exit( EXIT_SUCCESS );
+}
+
+</code>
+
+==== Step 2 ====
+Declare all variables needed throughout the application.
+<code cpp>
+unsigned int myTextureIds[2]; // Unique id's for the loaded textures
+int myTextureLocations[2]; // Texture locations when on the gpu
+int curr_timeLoc; // The location of the time used in shader for animation
+GLuint myTerrainDisplayList = 0; // Display list handler used for grid rendering
+
+//variables to share across cluster
+double curr_time = 0.0;  // Time syncronization
+bool wireframe = false; // If rendering in wireframe
+bool info = false; // If showing hud info
+bool stats = false; // If showing sgct stats
+</code>
+
+==== Step 3 ====
+Implement a function for rendering a grid with variable width, height, width resolution and height resolution to a display list. The display list will later be used when rendering to draw the grid used for height mapping.
+
+<code cpp>
+// Forward declaration
+void drawTerrainGrid( float width, float height, unsigned int wRes, unsigned int dRes );
+
+// Implementation
+void drawTerrainGrid( float width, float depth, unsigned int wRes, unsigned int dRes )
+{
+	float wStart = -width * 0.5f;
+	float dStart = -depth * 0.5f;
+
+	float dW = width / static_cast<float>( wRes );
+	float dD = depth / static_cast<float>( dRes );
+
+	for( unsigned int depthIndex = 0; depthIndex < dRes; ++depthIndex )
+    {
+		float dPosLow = dStart + dD * static_cast<float>( depthIndex );
+		float dPosHigh = dStart + dD * static_cast<float>( depthIndex + 1 );
+		float dTexCoordLow = depthIndex / static_cast<float>( dRes );
+		float dTexCoordHigh = (depthIndex+1) / static_cast<float>( dRes );
+
+		glBegin( GL_TRIANGLE_STRIP );
+
+		glNormal3f(0.0f,1.0f,0.0);
+        for( unsigned widthIndex = 0; widthIndex < wRes; ++widthIndex )
+        {
+			float wPos = wStart + dW * static_cast<float>( widthIndex );
+			float wTexCoord = widthIndex / static_cast<float>( wRes );
+
+			glMultiTexCoord2fARB(GL_TEXTURE0_ARB, wTexCoord, dTexCoordLow);
+			glMultiTexCoord2fARB(GL_TEXTURE1_ARB, wTexCoord, dTexCoordLow);
+			glVertex3f( wPos, 0.0f, dPosLow );
+
+			glMultiTexCoord2fARB(GL_TEXTURE0_ARB, wTexCoord, dTexCoordHigh);
+			glMultiTexCoord2fARB(GL_TEXTURE1_ARB, wTexCoord, dTexCoordHigh);
+			glVertex3f( wPos, 0.0f, dPosHigh );
+        }
+
+		glEnd();
+    }
+}
+</code>
+
+==== Step 4 ====
+Overload the initOGL function as we need some custom intiailizations done to get everything running.
+
+What we do in our custom initialization is the following:
+  - Set rendering states
+  - Setup a light
+  - Creating the terrain grid by rendering to a display list
+  - Loading textures used for height mapping and normal mapping
+  - Loading the shaders used for height mapping and reading the texture locations used in the shader code (used for height mapping and normal mapping)
+  - Unsetting the shaders to go back to a fixed function pipeline
+
+<code cpp>
+// Forward declaration
+void myInitOGLFun();
+
+// Implementation
+void myInitOGLFun()
+{
+	glEnable( GL_DEPTH_TEST );
+	glEnable( GL_NORMALIZE );
+	glEnable( GL_COLOR_MATERIAL );
+	glShadeModel( GL_SMOOTH );
+	glEnable(GL_LIGHTING);
+
+	//Set up light 0
+	glEnable(GL_LIGHT0);
+	GLfloat lightPosition[] = { -2.0f, 3.0f, 10.0f, 1.0f };
+	GLfloat lightAmbient[]= { 0.1f, 0.1f, 0.1f, 1.0f };
+	GLfloat lightDiffuse[]= { 1.0f, 1.0f, 1.0f, 1.0f };
+	GLfloat lightSpecular[]= { 1.0f, 1.0f, 1.0f, 1.0f };
+	glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
+	glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
+	glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpecular);
+
+	//create and compile display list
+	myTerrainDisplayList = glGenLists(1);
+	glNewList(myTerrainDisplayList, GL_COMPILE);
+	//draw the terrain once to add it to the display list
+	drawTerrainGrid( 1.0f, 1.0f, 256, 256 );
+	glEndList();
+
+	//sgct::TextureManager::Instance()->setAnisotropicFilterSize(4.0f);
+	sgct::TextureManager::Instance()->loadTexure(myTextureIds[0], "heightmap", "heightmap.png", true, 0);
+	sgct::TextureManager::Instance()->loadTexure(myTextureIds[1], "normalmap", "normalmap.png", true, 0);
+
+	sgct::ShaderManager::Instance()->addShader( "Heightmap", "heightmap.vert", "heightmap.frag" );
+
+	sgct::ShaderManager::Instance()->bindShader( "Heightmap" );
+	myTextureLocations[0] = -1;
+	myTextureLocations[1] = -1;
+	curr_timeLoc = -1;
+	myTextureLocations[0] = sgct::ShaderManager::Instance()->getShader( "Heightmap").getUniformLocation( "hTex" );
+	myTextureLocations[1] = sgct::ShaderManager::Instance()->getShader( "Heightmap").getUniformLocation( "nTex" );
+	curr_timeLoc = sgct::ShaderManager::Instance()->getShader( "Heightmap").getUniformLocation( "curr_time" );
+
+	glUniform1i( myTextureLocations[0], 0 );
+	glUniform1i( myTextureLocations[1], 1 );
+	sgct::ShaderManager::Instance()->unBindShader();
+}
+</code>
+
+==== Step 5 ====
+We want to be able to some states in the application throughout the whole cluster. What we want to do i to be able to:
+  * Enable/disable sgct statistics
+  * Enable/disable info HUD
+  * Enable/disable wireframe rendering
+
+To get this functionality we have to implement a custom PostSyncPreDraw function that reads the current states before rendering.
+
+<code cpp>
+// Forward declaration
+void myPostSyncPreDrawFun();
+
+// Implementation
+void myPostSyncPreDrawFun()
+{
+	gEngine->setWireframe(wireframe);
+	gEngine->setDisplayInfoVisibility(info);
+	gEngine->setStatsGraphVisibility(stats);
+}
+</code>
+
+Even if all cluster nodes can read the current state at this point it won't matter much if the states are not syncronized across the cluster from the master. We have to implement encoding and decoding functions so the states are pushed out to all nodes:
+
+<code cpp>
+// Forward declaration
+void myEncodeFun();
+void myDecodeFun();
+
+// implementations
+void myEncodeFun()
+{
+	sgct::SharedData::Instance()->writeDouble( curr_time );
+	sgct::SharedData::Instance()->writeBool( wireframe );
+	sgct::SharedData::Instance()->writeBool( info );
+	sgct::SharedData::Instance()->writeBool( stats );
+}
+
+void myDecodeFun()
+{
+	curr_time = sgct::SharedData::Instance()->readDouble();
+	wireframe = sgct::SharedData::Instance()->readBool();
+	info = sgct::SharedData::Instance()->readBool();
+	stats = sgct::SharedData::Instance()->readBool();
+}
+</code>
+==== Step 6 ====
+At this point all cluster nodes can read the state of the application but we also want to be able to change the states with the help of the keyboard. We implement a custom keyboard callback function and map the following keys:
+  * S key => Enable/disable sgct stats
+  * I key => Enable/disable info HUD
+  * W key => Enable/disable wireframe rendering
+  * Q key => Quit the application
+
+The implementation looks like:
+
+<code cpp>
+// Forward declaration
+void keyCallback(int key, int action);
+
+// Implementation
+
+void keyCallback(int key, int action)
+{
+	if( gEngine->isMaster() )
+	{
+		switch( key )
+		{
+		case 'S':
+			if(action == GLFW_PRESS)
+				stats = !stats;
+			break;
+
+		case 'I':
+			if(action == GLFW_PRESS)
+				info = !info;
+			break;
+
+		case 'W':
+			if(action == GLFW_PRESS)
+				wireframe = !wireframe;
+			break;
+
+		case 'Q':
+			if(action == GLFW_PRESS)
+				gEngine->terminate();
+			break;
+		}
+	}
+}
+</code>
+==== Step 7 ====
+Alright, at this point all functionality is in place except the actual rendering. We have some custom steps we need to do before we can see the result of our totally awesome animated terrain, height mapped through the shader.
+
+We implement the render function that has the following tasks it should perform:
+  - Translate and rotate the grid for good view of the terrain
+  - Bind the textures used for height mapping and normal mapping
+  - Activate the previously loaded shaders and bind them to the rendering pipeline
+  - Set the time uniform in the shader (this is for the animated height of the terrain)
+  - Unbind the shader to go back to a fixed function pipeline
+  - Disable the textures
+
+And the implementation looks like:
+<code cpp>
+// Forward declaration
+void myDrawFun()
+
+// Implementation
+void myDrawFun()
+{
+	glTranslatef( 0.0f, -0.15f, 2.5f );
+	glRotatef( static_cast<float>( curr_time ) * 8.0f, 0.0f, 1.0f, 0.0f );
+
+	glColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
+
+	glActiveTextureARB(GL_TEXTURE0_ARB);
+	glBindTexture(GL_TEXTURE_2D, sgct::TextureManager::Instance()->getTextureByIndex( myTextureIds[0] ));
+	glEnable(GL_TEXTURE_2D);
+
+	glActiveTextureARB(GL_TEXTURE1_ARB);
+	glBindTexture(GL_TEXTURE_2D, sgct::TextureManager::Instance()->getTextureByIndex( myTextureIds[1] ));
+	glEnable(GL_TEXTURE_2D);
+
+	//set current shader program
+	sgct::ShaderManager::Instance()->bindShader( "Heightmap" );
+	glUniform1f( curr_timeLoc, static_cast<float>( curr_time ) );
+
+	glCallList(myTerrainDisplayList);
+
+	//unset current shader program
+	sgct::ShaderManager::Instance()->unBindShader();
+
+	glActiveTextureARB(GL_TEXTURE1_ARB);
+	glDisable(GL_TEXTURE_2D);
+
+	glActiveTextureARB(GL_TEXTURE0_ARB);
+	glDisable(GL_TEXTURE_2D);
+}
+</code>
+
+==== Step 8 ====
+Thought you were all done? Well, almost. All the functionality is in place but it won't do any good if we don't connect it all to the sgct engine main loop traversal. We change our cpp main function to look like this:
+
+<code cpp>
+int main( int argc, char* argv[] )
+{
+	gEngine = new sgct::Engine( argc, argv );
+
+	gEngine->setInitOGLFunction( myInitOGLFun );
+	gEngine->setDrawFunction( myDrawFun );
+	gEngine->setPreSyncFunction( myPreSyncFun );
+	gEngine->setPostSyncPreDrawFunction( myPostSyncPreDrawFun );
+	gEngine->setKeyboardCallbackFunction( keyCallback );
+
+	if( !gEngine->init() )
+	{
+		delete gEngine;
+		return EXIT_FAILURE;
+	}
+
+	sgct::SharedData::Instance()->setEncodeFunction(myEncodeFun);
+	sgct::SharedData::Instance()->setDecodeFunction(myDecodeFun);
+
+	// Main loop
+	gEngine->render();
+
+	// Clean up
+	glDeleteLists(myTerrainDisplayList, 1);
+	sgct::ShaderManager::Destroy();
+	sgct::TextureManager::Destroy();
+	delete gEngine;
+
+	// Exit program
+	exit( EXIT_SUCCESS );
+}
+</code>
+
+Now you should have a spinning animated terrain showing on your screen if you run the application.
+
+As we did things in a little different order than the implementations are ordered in the file. Take a look at the final code below if there are any errors. The shader files will also be briefly explained at the end of the tutorial.
+==== Final code ====
+<file cpp main.cpp>
+#include <stdlib.h>
+#include <stdio.h>
+
+#include "sgct.h"
+
+sgct::Engine * gEngine;
+
+void myDrawFun();
+void myPreSyncFun();
+void myPostSyncPreDrawFun();
+void myInitOGLFun();
+void myEncodeFun();
+void myDecodeFun();
+
+void keyCallback(int key, int action);
+void drawTerrainGrid( float width, float height, unsigned int wRes, unsigned int dRes );
+
+unsigned int myTextureIds[2];
+int myTextureLocations[2];
+int curr_timeLoc;
+GLuint myTerrainDisplayList = 0;
+
+//variables to share across cluster
+double curr_time = 0.0;
+bool wireframe = false;
+bool info = false;
+bool stats = false;
+
+int main( int argc, char* argv[] )
+{
+	gEngine = new sgct::Engine( argc, argv );
+
+	gEngine->setInitOGLFunction( myInitOGLFun );
+	gEngine->setDrawFunction( myDrawFun );
+	gEngine->setPreSyncFunction( myPreSyncFun );
+	gEngine->setPostSyncPreDrawFunction( myPostSyncPreDrawFun );
+	gEngine->setKeyboardCallbackFunction( keyCallback );
+
+	if( !gEngine->init() )
+	{
+		delete gEngine;
+		return EXIT_FAILURE;
+	}
+
+	sgct::SharedData::Instance()->setEncodeFunction(myEncodeFun);
+	sgct::SharedData::Instance()->setDecodeFunction(myDecodeFun);
+
+	// Main loop
+	gEngine->render();
+
+	// Clean up
+	glDeleteLists(myTerrainDisplayList, 1);
+	sgct::ShaderManager::Destroy();
+	sgct::TextureManager::Destroy();
+	delete gEngine;
+
+	// Exit program
+	exit( EXIT_SUCCESS );
+}
+
+void myDrawFun()
+{
+	glTranslatef( 0.0f, -0.15f, 2.5f );
+	glRotatef( static_cast<float>( curr_time ) * 8.0f, 0.0f, 1.0f, 0.0f );
+
+	glColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
+
+	glActiveTextureARB(GL_TEXTURE0_ARB);
+	glBindTexture(GL_TEXTURE_2D, sgct::TextureManager::Instance()->getTextureByIndex( myTextureIds[0] ));
+	glEnable(GL_TEXTURE_2D);
+
+	glActiveTextureARB(GL_TEXTURE1_ARB);
+	glBindTexture(GL_TEXTURE_2D, sgct::TextureManager::Instance()->getTextureByIndex( myTextureIds[1] ));
+	glEnable(GL_TEXTURE_2D);
+
+	//set current shader program
+	sgct::ShaderManager::Instance()->bindShader( "Heightmap" );
+	glUniform1f( curr_timeLoc, static_cast<float>( curr_time ) );
+
+	glCallList(myTerrainDisplayList);
+
+	//unset current shader program
+	sgct::ShaderManager::Instance()->unBindShader();
+
+	glActiveTextureARB(GL_TEXTURE1_ARB);
+	glDisable(GL_TEXTURE_2D);
+
+	glActiveTextureARB(GL_TEXTURE0_ARB);
+	glDisable(GL_TEXTURE_2D);
+}
+
+void myPreSyncFun()
+{
+	if( gEngine->isMaster() )
+	{
+		curr_time = sgct::Engine::getTime();
+	}
+}
+
+void myPostSyncPreDrawFun()
+{
+	gEngine->setWireframe(wireframe);
+	gEngine->setDisplayInfoVisibility(info);
+	gEngine->setStatsGraphVisibility(stats);
+}
+
+void myInitOGLFun()
+{
+	glEnable( GL_DEPTH_TEST );
+	glEnable( GL_NORMALIZE );
+	glEnable( GL_COLOR_MATERIAL );
+	glShadeModel( GL_SMOOTH );
+	glEnable(GL_LIGHTING);
+
+	//Set up light 0
+	glEnable(GL_LIGHT0);
+	GLfloat lightPosition[] = { -2.0f, 3.0f, 10.0f, 1.0f };
+	GLfloat lightAmbient[]= { 0.1f, 0.1f, 0.1f, 1.0f };
+	GLfloat lightDiffuse[]= { 1.0f, 1.0f, 1.0f, 1.0f };
+	GLfloat lightSpecular[]= { 1.0f, 1.0f, 1.0f, 1.0f };
+	glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
+	glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
+	glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpecular);
+
+	//create and compile display list
+	myTerrainDisplayList = glGenLists(1);
+	glNewList(myTerrainDisplayList, GL_COMPILE);
+	//draw the terrain once to add it to the display list
+	drawTerrainGrid( 1.0f, 1.0f, 256, 256 );
+	glEndList();
+
+	//sgct::TextureManager::Instance()->setAnisotropicFilterSize(4.0f);
+	sgct::TextureManager::Instance()->loadTexure(myTextureIds[0], "heightmap", "heightmap.png", true, 0);
+	sgct::TextureManager::Instance()->loadTexure(myTextureIds[1], "normalmap", "normalmap.png", true, 0);
+
+	sgct::ShaderManager::Instance()->addShader( "Heightmap", "heightmap.vert", "heightmap.frag" );
+
+	sgct::ShaderManager::Instance()->bindShader( "Heightmap" );
+	myTextureLocations[0] = -1;
+	myTextureLocations[1] = -1;
+	curr_timeLoc = -1;
+	myTextureLocations[0] = sgct::ShaderManager::Instance()->getShader( "Heightmap").getUniformLocation( "hTex" );
+	myTextureLocations[1] = sgct::ShaderManager::Instance()->getShader( "Heightmap").getUniformLocation( "nTex" );
+	curr_timeLoc = sgct::ShaderManager::Instance()->getShader( "Heightmap").getUniformLocation( "curr_time" );
+
+	glUniform1i( myTextureLocations[0], 0 );
+	glUniform1i( myTextureLocations[1], 1 );
+	sgct::ShaderManager::Instance()->unBindShader();
+}
+
+void myEncodeFun()
+{
+	sgct::SharedData::Instance()->writeDouble( curr_time );
+	sgct::SharedData::Instance()->writeBool( wireframe );
+	sgct::SharedData::Instance()->writeBool( info );
+	sgct::SharedData::Instance()->writeBool( stats );
+}
+
+void myDecodeFun()
+{
+	curr_time = sgct::SharedData::Instance()->readDouble();
+	wireframe = sgct::SharedData::Instance()->readBool();
+	info = sgct::SharedData::Instance()->readBool();
+	stats = sgct::SharedData::Instance()->readBool();
+}
+
+/*!
+Will draw a flat surface that can be used for the heightmapped terrain.
+@param	width	Width of the surface
+@param	depth	Depth of the surface
+@param	wRes	Width resolution of the surface
+@param	dRes	Depth resolution of the surface
+*/
+void drawTerrainGrid( float width, float depth, unsigned int wRes, unsigned int dRes )
+{
+	float wStart = -width * 0.5f;
+	float dStart = -depth * 0.5f;
+
+	float dW = width / static_cast<float>( wRes );
+	float dD = depth / static_cast<float>( dRes );
+
+	for( unsigned int depthIndex = 0; depthIndex < dRes; ++depthIndex )
+    {
+		float dPosLow = dStart + dD * static_cast<float>( depthIndex );
+		float dPosHigh = dStart + dD * static_cast<float>( depthIndex + 1 );
+		float dTexCoordLow = depthIndex / static_cast<float>( dRes );
+		float dTexCoordHigh = (depthIndex+1) / static_cast<float>( dRes );
+
+		glBegin( GL_TRIANGLE_STRIP );
+
+		glNormal3f(0.0f,1.0f,0.0);
+        for( unsigned widthIndex = 0; widthIndex < wRes; ++widthIndex )
+        {
+			float wPos = wStart + dW * static_cast<float>( widthIndex );
+			float wTexCoord = widthIndex / static_cast<float>( wRes );
+
+			glMultiTexCoord2fARB(GL_TEXTURE0_ARB, wTexCoord, dTexCoordLow);
+			glMultiTexCoord2fARB(GL_TEXTURE1_ARB, wTexCoord, dTexCoordLow);
+			glVertex3f( wPos, 0.0f, dPosLow );
+
+			glMultiTexCoord2fARB(GL_TEXTURE0_ARB, wTexCoord, dTexCoordHigh);
+			glMultiTexCoord2fARB(GL_TEXTURE1_ARB, wTexCoord, dTexCoordHigh);
+			glVertex3f( wPos, 0.0f, dPosHigh );
+        }
+
+		glEnd();
+    }
+}
+
+void keyCallback(int key, int action)
+{
+	if( gEngine->isMaster() )
+	{
+		switch( key )
+		{
+		case 'S':
+			if(action == GLFW_PRESS)
+				stats = !stats;
+			break;
+
+		case 'I':
+			if(action == GLFW_PRESS)
+				info = !info;
+			break;
+
+		case 'W':
+			if(action == GLFW_PRESS)
+				wireframe = !wireframe;
+			break;
+
+		case 'Q':
+			if(action == GLFW_PRESS)
+				gEngine->terminate();
+			break;
+		}
+	}
+}
+</file>
+==== Vertex shader ====
+The vertex shader starts by setting texture coordinates for each vertex because sampling is done in both the fragment and vertex shader (vertex: height map texture, fragment: normal map texture).
+
+A height scaling value is calculated based on the time, and then the vertex y value is offset by sampling the height map and multiplying with the scaling.
+
+The eye space value is calculated for the vertex so that lighting can be calculated later in the fragment shader.
+
+The final step is to transform the vertex by the view and projection matrices so that we are in the correct space when arriving to the fragment shader.
+
+<file cpp heightmap.vert>
+#version 120
+
+uniform sampler2D hTex;			// Sampler for texture height map
+uniform sampler2D nTex;			// Sampler for texture height map
+uniform float curr_time;		// Time
+varying float vScale;			// Height scaling
+varying vec3 light_dir;			// Light direction
+varying vec3 v;					// Translate vector
+
+void main()
+{
+	gl_TexCoord[0] = gl_MultiTexCoord0;
+	gl_TexCoord[1] = gl_MultiTexCoord1;
+
+	vScale = 0.2+0.10*sin(curr_time);
+	float hVal = texture2D( hTex, gl_TexCoord[0].st ).x;
+	vec4 vertPos = gl_Vertex + vec4(0.0, hVal * vScale, 0.0, 0.0);
+
+	//Transform a vertex to eye space
+	v = vec3(gl_ModelViewMatrix * vertPos);
+	light_dir = normalize(gl_LightSource[0].position.xyz - v);
+
+	gl_Position = gl_ModelViewProjectionMatrix * vertPos;
+}
+</file>
+==== Fragment shader ====
+Allthough it might look pretty long the fragment shader is fairly simple.
+
+A helper function for calculaing the shading is implemented, in this case we utilize phong shading.
+
+In the actual fragment shader we start off by sampling the normal from the normal shader and make sure it points in the right direction.
+
+After that a color depending on the current height is calculated and then multiplied with the phong shading to be able to make out the terrain better.
+
+<file cpp heightmapping.frag>
+#version 120
+
+uniform sampler2D hTex;
+uniform sampler2D nTex;
+uniform float curr_time;
+varying float vScale;
+varying vec3 light_dir;
+varying vec3 v;
+
+// Computes the diffues shading by using the normal for
+// the fragment and direction from fragment to the light
+vec4 calcShading( vec3 N, vec3 L )
+{
+	vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)
+	vec3 R = normalize(reflect(-L,N));
+
+	//Ambient contribution
+	vec4 Iamb = gl_LightSource[0].ambient;
+
+	//Diffuse contribution
+	vec4 Idiff = gl_LightSource[0].diffuse * max(dot(N,L), 0.0);
+	Idiff = clamp(Idiff, 0.0, 1.0);
+
+	//Specular contribution
+	const float specExp = 32.0;
+	vec4 Ispec = gl_LightSource[0].specular
+		* pow(max(dot(R,E),0.0), specExp);
+        Ispec = clamp(Ispec, 0.0, 1.0);
+
+	return Iamb + Idiff + Ispec;
+}
+
+void main()
+{
+	vec3 pixelVals = texture2D( nTex, gl_TexCoord[1].st).rgb;
+	vec3 normal;
+	normal.x = (pixelVals.r * 2.0 - 1.0);
+	normal.y = (pixelVals.b * 2.0 - 1.0)/vScale;
+	normal.z = (pixelVals.g * 2.0 - 1.0);
+	if(vScale < 0)
+		normal = -normal;
+
+	// Set fragment color
+	// This will result in a non-linear color temperature scale based on height value
+	float hVal = texture2D( hTex, gl_TexCoord[0].st).x;
+	float Pi = 3.14159265358979323846264;
+	gl_FragColor.rgb = vec3(1.0-cos(Pi*hVal),sin(Pi*hVal),cos(Pi*hVal));
+
+	// multiply color with shading
+	gl_FragColor.rgb *= calcShading( normalize(gl_NormalMatrix * normal), light_dir ).xyz;
+	gl_FragColor.a = 1.0;
+}
+
+</file>
+{{indexmenu_n>5}}
+~~DISCUSSION:on~~
+{{tag>Cluster C++ OpenGL VR Shading Texturing}}

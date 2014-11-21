@@ -1,0 +1,531 @@
+====== Embedding OSG (Open Scene Graph) ======
+<WRAP center round alert 60%>Update in progress: Updating samples and files to SGCT 1.5+ [2013-06-11]</WRAP>
+
+This tutorial will demonstrate how to embed OpenSceneGraph (OSG) within a SGCT window. For more information about OSG look at: [[http://www.openscenegraph.org|www.openscenegraph.org]]. Read the [[http://www.openscenegraph.org/projects/osg/wiki/Support/GettingStarted|getting started guide]] at the OSG webpage.\\ 
+\\ 
+If you don't want to compile OSG then a binary build is included in some of the SGCT windows installers. For OS X users the easiest way is to download a OSG installer at: [[http://www.artoolworks.com/dist/openscenegraph/3.1.x/]].
+\\ \\ 
+Other binary builds can be found at [[http://www.alphapixel.com/osg/downloads/free-openscenegraph-binary-downloads|Alphapixel]]. If you are running Ubuntu (any flavor) as OS you can simply install OSG using the [[https://help.ubuntu.com/community/SynapticHowto|Synaptic Package Manager]].
+For exporting 3D models from Autodesk 3Ds Max download the [[http://sourceforge.net/projects/osgmaxexp/|OSG Max Exporter]] (there are also exporters for blender and maya). The airplane model in this example is downloaded from [[http://www.turbosquid.com/|turbosquid]]’s 3d model database and converted using the exporter plugin. OSG also provides command line tools as osgconv for conversion of 3D models.\\ 
+\\ 
+This tutorial will use a lot of callbacks. Read more about the different callbacks [[develop:sgct:gettingstarted:gettingstarted|here]].\\ 
+\\ 
+{{:develop:sgcttutorials:osgexample.png?direct&|}}\\
+\\ 
+==== Step 1 ====
+Make sure to link against the OSG libraries.
+
+  * OpenThreads
+  * osg
+  * osgUtil
+  * osgDB
+  * osgViewer
+
+<note important>For debug builds use the debug libs (usually ending with a 'd').</note>
+
+==== Step 2 ====
+Include the following:
+<code cpp>
+#include "sgct.h"
+#include <osgViewer/Viewer>
+#include <osgDB/ReadFile>
+#include <osg/Matrix>
+#include <osg/Transform>
+#include <osg/MatrixTransform>
+</code>
+In OSG it’s preferred to use smart referenced pointers, however to be able to control when the viewer object destructs a normal pointer is used instead. Otherwise the application might cause a segmentation fault upon exit when the viewer tries to destroy the OpenGL context which is destroyed by SGCT. Create a global pointer for the viewer and a referenced pointer for the root node of the scene graph tree.
+<code cpp>
+osgViewer::Viewer * mViewer;
+osg::ref_ptr<osg::Group> mRootNode;
+</code>
+==== Step 3 ====
+Declare and create a function that will be used to initiate OSG. This function will create the viewer object and set it up to use the SGCT window & OpenGL context. The root node will be created here and assigned to the viewer.
+<code cpp>
+void initOSG();
+</code>
+<code cpp>
+void initOSG()
+{
+	mRootNode = new osg::Group();
+	osg::Referenced::setThreadSafeReferenceCounting(true);
+
+	// Create the osgViewer instance
+	mViewer = new osgViewer::Viewer;
+
+	//run single threaded when embedded
+	mViewer->setThreadingModel(osgViewer::Viewer::SingleThreaded);
+
+	// Set up osgViewer::GraphicsWindowEmbedded for this context
+	osg::ref_ptr< ::osg::GraphicsContext::Traits > traits =
+           new osg::GraphicsContext::Traits;
+
+	osg::ref_ptr<osgViewer::GraphicsWindowEmbedded> graphicsWindow =
+           new osgViewer::GraphicsWindowEmbedded(traits.get());
+
+	mViewer->getCamera()->setGraphicsContext(graphicsWindow.get());
+
+	//SGCT will handle the near and far planes
+	mViewer->getCamera()->setComputeNearFarMode(osgUtil::CullVisitor::DO_NOT_COMPUTE_NEAR_FAR);
+	mViewer->getCamera()->setClearColor( osg::Vec4( 0.0f, 0.0f, 0.0f, 0.0f) );
+
+	//disable osg from clearing the buffers that will be done by SGCT
+	GLbitfield tmpMask = mViewer->getCamera()->getClearMask();
+	mViewer->getCamera()->setClearMask(tmpMask & (~(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)));
+
+	mViewer->setSceneData(mRootNode.get());
+}
+</code>
+
+==== Step 4 ====
+Let’s add some light sources to the scene graph. This example will show how to create two light sources. The maximum number of OpenGL lights is 8 but it’s better to use light maps or GLSL to lit a more complex scene. Create a function and implement the following. 
+<code cpp>
+void setupLightSource();
+</code>
+<code cpp>
+void setupLightSource()
+{
+	osg::Light * light0 = new osg::Light;
+	osg::Light * light1 = new osg::Light;
+	osg::LightSource* lightSource0 = new osg::LightSource;
+	osg::LightSource* lightSource1 = new osg::LightSource;
+
+	light0->setLightNum( 0 );
+	light0->setPosition( osg::Vec4( 5.0f, 5.0f, 10.0f, 1.0f ) );
+	light0->setAmbient( osg::Vec4( 0.3f, 0.3f, 0.3f, 1.0f ) );
+	light0->setDiffuse( osg::Vec4( 0.8f, 0.8f, 0.8f, 1.0f ) );
+	light0->setSpecular( osg::Vec4( 0.1f, 0.1f, 0.1f, 1.0f ) );
+	light0->setConstantAttenuation( 1.0f );
+
+	lightSource0->setLight( light0 );
+        lightSource0->setLocalStateSetModes( osg::StateAttribute::ON );
+	lightSource0->setStateSetModes( *(mRootNode->getOrCreateStateSet()), osg::StateAttribute::ON );
+
+	light1->setLightNum( 1 );
+	light1->setPosition( osg::Vec4( -5.0f, -2.0f, 10.0f, 1.0f ) );
+	light1->setAmbient( osg::Vec4( 0.2f, 0.2f, 0.2f, 1.0f ) );
+	light1->setDiffuse( osg::Vec4( 0.5f, 0.5f, 0.5f, 1.0f ) );
+	light1->setSpecular( osg::Vec4( 0.2f, 0.2f, 0.2f, 1.0f ) );
+	light1->setConstantAttenuation( 1.0f );
+
+	lightSource1->setLight( light1 );
+        lightSource1->setLocalStateSetModes( osg::StateAttribute::ON );
+	lightSource1->setStateSetModes( *(mRootNode->getOrCreateStateSet()), osg::StateAttribute::ON );
+
+	mRootNode->addChild( lightSource0 );
+	mRootNode->addChild( lightSource1 );
+}
+</code>
+
+==== Step 5 ====
+The following code will demonstrate how to read a model in your init OpenGL callback. Usually 3D modeling tools have a different coordinate system orientation than SGCT. For example 3Ds max has Z upwards and Y into the screen while SGCT has Y upwards and Z pointing out from the screen. Therefore the model is rotated 90 degrees to match the coordinate system used in SGCT.
+<code cpp>
+void myInitOGLFun();
+osg::ref_ptr<osg::MatrixTransform> mSceneTrans;
+</code>
+The scene transformation will be used later for moving the scene.
+<code cpp>
+void myInitOGLFun()
+{
+	initOSG();
+	setupLightSource();
+
+	osg::ref_ptr<osg::Node>            mModel;
+	osg::ref_ptr<osg::MatrixTransform> mModelTrans;
+
+	mSceneTrans = new osg::MatrixTransform();
+	mModelTrans  = new osg::MatrixTransform();
+
+	//rotate osg coordinate system to match sgct
+	mModelTrans->preMult(osg::Matrix::rotate(glm::radians(-90.0f),
+                                            1.0f, 0.0f, 0.0f));
+
+	mRootNode->addChild( mSceneTrans.get() );
+	mSceneTrans->addChild( mModelTrans.get() );
+
+	sgct::MessageHandler::Instance()->print("Loading model 'airplane.ive'...\n");
+	mModel = osgDB::readNodeFile("airplane.ive");
+
+	if ( mModel.valid() )
+	{
+		sgct::MessageHandler::Instance()->print("Model loaded successfully!\n");
+		mModelTrans->addChild(mModel.get());
+
+		//get the bounding sphere
+		osg::BoundingSphere bs;
+		bs = mModel->getBound();
+		osg::Vec3f tmpVec;
+		tmpVec = bs.center();
+
+		//translate model center to origin
+		mModelTrans->postMult(osg::Matrix::translate( -tmpVec[0], -tmpVec[1], -tmpVec[2] ) );
+
+		sgct::MessageHandler::Instance()->print("Model bounding sphere center:\tx=%f\ty=%f\tz=%f\n", tmpVec[0], tmpVec[1], tmpVec[2] );
+		sgct::MessageHandler::Instance()->print("Model bounding sphere radius:\t%f\n", bs.radius() );
+
+		//disable face culling
+		mModel->getOrCreateStateSet()->setMode( GL_CULL_FACE,
+			osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+	}
+	else
+		sgct::MessageHandler::Instance()->print("Failed to read model!\n");
+}
+</code>
+
+==== Step 6 ====
+To only update the scene graph once per frame add the following code at the end of the post sync pre draw callback.
+<code cpp>
+void myDrawFun()
+{
+	const int * curr_vp = gEngine->getActiveViewport();
+	mViewer->getCamera()->setViewport(curr_vp[0], curr_vp[1], curr_vp[2], curr_vp[3]);
+	mViewer->getCamera()->setProjectionMatrix( osg::Matrix( glm::value_ptr(gEngine->getActiveProjectionMatrix() ) ));
+
+	mViewer->renderingTraversals();
+}
+</code>
+==== Step 7 ====
+In the draw callback the camera properties must be set to match the settings in SGCT.
+<code cpp>
+        const int * curr_vp = gEngine->getActiveViewport();
+	mViewer->getCamera()->setViewport(curr_vp[0], curr_vp[1], curr_vp[2], curr_vp[3]);
+	mViewer->getCamera()->setProjectionMatrix( osg::Matrix( glm::value_ptr(gEngine->getActiveProjectionMatrix() ) ));
+
+	mViewer->renderingTraversals();
+</code>
+
+==== Step 8 ====
+To destroy the viewer correctly upon exit implement a clean up callback.
+<code cpp>
+void myCleanUpFun();
+</code>
+<code cpp>
+void myCleanUpFun()
+{
+	sgct::MessageHandler::Instance()->print("Cleaning up osg data...\n");
+	delete mViewer;
+	mViewer = NULL;
+}
+</code>
+
+==== Final code ====
+Attach all the callbacks to the Engine. Look in the keyboard callback for control keys of the application.
+<file cpp main.cpp>
+#include "sgct.h"
+#include <osgViewer/Viewer>
+#include <osgDB/ReadFile>
+#include <osg/Matrix>
+#include <osg/Transform>
+#include <osg/MatrixTransform>
+
+sgct::Engine * gEngine;
+
+//Not using ref pointers enables
+//more controlled termination
+//and prevents segfault on Linux
+osgViewer::Viewer * mViewer;
+osg::ref_ptr<osg::Group> mRootNode;
+osg::ref_ptr<osg::MatrixTransform> mSceneTrans;
+
+//callbacks
+void myInitOGLFun();
+void myPreSyncFun();
+void myPostSyncPreDrawFun();
+void myDrawFun();
+void myEncodeFun();
+void myDecodeFun();
+void myCleanUpFun();
+void keyCallback(int key, int action);
+
+//other functions
+void initOSG();
+void setupLightSource();
+
+//variables to share across cluster
+double curr_time = 0.0;
+double dist = -10.0;
+bool wireframe = false;
+bool info = false;
+bool stats = false;
+bool takeScreenshot = false;
+bool light = true;
+
+//other var
+bool arrowButtons[4];
+enum directions { FORWARD = 0, BACKWARD, LEFT, RIGHT };
+const double navigation_speed = 5.0;
+
+int main( int argc, char* argv[] )
+{
+	gEngine = new sgct::Engine( argc, argv );
+
+	gEngine->setInitOGLFunction( myInitOGLFun );
+	gEngine->setPreSyncFunction( myPreSyncFun );
+	gEngine->setPostSyncPreDrawFunction( myPostSyncPreDrawFun );
+	gEngine->setDrawFunction( myDrawFun );
+	gEngine->setCleanUpFunction( myCleanUpFun );
+	gEngine->setKeyboardCallbackFunction( keyCallback );
+
+	for(int i=0; i<4; i++)
+		arrowButtons[i] = false;
+
+	if( !gEngine->init() )
+	{
+		delete gEngine;
+		return EXIT_FAILURE;
+	}
+
+	sgct::SharedData::Instance()->setEncodeFunction( myEncodeFun );
+	sgct::SharedData::Instance()->setDecodeFunction( myDecodeFun );
+
+	// Main loop
+	gEngine->render();
+
+	// Clean up
+	delete gEngine;
+
+	// Exit program
+	exit( EXIT_SUCCESS );
+}
+
+void myInitOGLFun()
+{
+	initOSG();
+	setupLightSource();
+
+	osg::ref_ptr<osg::Node>            mModel;
+	osg::ref_ptr<osg::MatrixTransform> mModelTrans;
+
+	mSceneTrans = new osg::MatrixTransform();
+	mModelTrans  = new osg::MatrixTransform();
+
+	//rotate osg coordinate system to match sgct
+	mModelTrans->preMult(osg::Matrix::rotate(glm::radians(-90.0f),
+                                            1.0f, 0.0f, 0.0f));
+
+	mRootNode->addChild( mSceneTrans.get() );
+	mSceneTrans->addChild( mModelTrans.get() );
+
+	sgct::MessageHandler::Instance()->print("Loading model 'airplane.ive'...\n");
+	mModel = osgDB::readNodeFile("airplane.ive");
+
+	if ( mModel.valid() )
+	{
+		sgct::MessageHandler::Instance()->print("Model loaded successfully!\n");
+		mModelTrans->addChild(mModel.get());
+
+		//get the bounding sphere
+		osg::BoundingSphere bs;
+		bs = mModel->getBound();
+		osg::Vec3f tmpVec;
+		tmpVec = bs.center();
+
+		//translate model center to origin
+		mModelTrans->postMult(osg::Matrix::translate( -tmpVec[0], -tmpVec[1], -tmpVec[2] ) );
+
+		sgct::MessageHandler::Instance()->print("Model bounding sphere center:\tx=%f\ty=%f\tz=%f\n", tmpVec[0], tmpVec[1], tmpVec[2] );
+		sgct::MessageHandler::Instance()->print("Model bounding sphere radius:\t%f\n", bs.radius() );
+
+		//disable face culling
+		mModel->getOrCreateStateSet()->setMode( GL_CULL_FACE,
+			osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+	}
+	else
+		sgct::MessageHandler::Instance()->print("Failed to read model!\n");
+}
+
+void myPreSyncFun()
+{
+	if( gEngine->isMaster() )
+	{
+		curr_time = sgct::Engine::getTime();
+
+		if( arrowButtons[FORWARD] )
+			dist += (navigation_speed * gEngine->getDt());
+		if( arrowButtons[BACKWARD] )
+			dist -= (navigation_speed * gEngine->getDt());
+
+	}
+}
+
+void myPostSyncPreDrawFun()
+{
+	gEngine->setWireframe(wireframe);
+	gEngine->setDisplayInfoVisibility(info);
+	gEngine->setStatsGraphVisibility(stats);
+
+	if( takeScreenshot )
+	{
+		gEngine->takeScreenshot();
+		takeScreenshot = false;
+	}
+
+	light ? mRootNode->getOrCreateStateSet()->setMode( GL_LIGHTING, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE) :
+		mRootNode->getOrCreateStateSet()->setMode( GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+
+	mSceneTrans->setMatrix(osg::Matrix::rotate( glm::radians(curr_time * 8.0), 0.0, 1.0, 0.0));
+	mSceneTrans->postMult(osg::Matrix::translate(0.0, -1.0, dist));
+
+	//transform to scene transformation from configuration file
+	mSceneTrans->postMult( osg::Matrix( glm::value_ptr( gEngine->getSceneTransform() ) ));
+
+	mViewer->advance(curr_time);
+
+	//traverse if there are any tasks to do
+	if (!mViewer->done())
+           mViewer->eventTraversal();
+}
+
+void myDrawFun()
+{
+	const int * curr_vp = gEngine->getActiveViewport();
+	mViewer->getCamera()->setViewport(curr_vp[0], curr_vp[1], curr_vp[2], curr_vp[3]);
+	mViewer->getCamera()->setProjectionMatrix( osg::Matrix( glm::value_ptr(gEngine->getActiveProjectionMatrix() ) ));
+
+	mViewer->renderingTraversals();
+}
+
+void myEncodeFun()
+{
+	sgct::SharedData::Instance()->writeDouble( curr_time );
+	sgct::SharedData::Instance()->writeDouble( dist );
+	sgct::SharedData::Instance()->writeBool( wireframe );
+	sgct::SharedData::Instance()->writeBool( info );
+	sgct::SharedData::Instance()->writeBool( stats );
+	sgct::SharedData::Instance()->writeBool( takeScreenshot );
+	sgct::SharedData::Instance()->writeBool( light );
+}
+
+void myDecodeFun()
+{
+	curr_time = sgct::SharedData::Instance()->readDouble();
+	dist = sgct::SharedData::Instance()->readDouble();
+	wireframe = sgct::SharedData::Instance()->readBool();
+	info = sgct::SharedData::Instance()->readBool();
+	stats = sgct::SharedData::Instance()->readBool();
+	takeScreenshot = sgct::SharedData::Instance()->readBool();
+	light = sgct::SharedData::Instance()->readBool();
+}
+
+void myCleanUpFun()
+{
+	sgct::MessageHandler::Instance()->print("Cleaning up osg data...\n");
+	delete mViewer;
+	mViewer = NULL;
+}
+
+void keyCallback(int key, int action)
+{
+	if( gEngine->isMaster() )
+	{
+		switch( key )
+		{
+		case 'S':
+			if(action == GLFW_PRESS)
+				stats = !stats;
+			break;
+
+		case 'I':
+			if(action == GLFW_PRESS)
+				info = !info;
+			break;
+
+		case 'L':
+			if(action == GLFW_PRESS)
+				light = !light;
+			break;
+
+		case 'W':
+			if(action == GLFW_PRESS)
+				wireframe = !wireframe;
+			break;
+
+		case 'Q':
+			if(action == GLFW_PRESS)
+				gEngine->terminate();
+			break;
+
+		case 'P':
+		case GLFW_KEY_F10:
+			if(action == GLFW_PRESS)
+				takeScreenshot = true;
+			break;
+
+		case GLFW_KEY_UP:
+			arrowButtons[FORWARD] = (action == GLFW_PRESS ? true : false);
+			break;
+
+		case GLFW_KEY_DOWN:
+			arrowButtons[BACKWARD] = (action == GLFW_PRESS ? true : false);
+			break;
+		}
+	}
+}
+
+void initOSG()
+{
+	mRootNode = new osg::Group();
+	osg::Referenced::setThreadSafeReferenceCounting(true);
+
+	// Create the osgViewer instance
+	mViewer = new osgViewer::Viewer;
+
+	//run single threaded when embedded
+	mViewer->setThreadingModel(osgViewer::Viewer::SingleThreaded);
+
+	// Set up osgViewer::GraphicsWindowEmbedded for this context
+	osg::ref_ptr< ::osg::GraphicsContext::Traits > traits =
+           new osg::GraphicsContext::Traits;
+
+	osg::ref_ptr<osgViewer::GraphicsWindowEmbedded> graphicsWindow =
+           new osgViewer::GraphicsWindowEmbedded(traits.get());
+
+	mViewer->getCamera()->setGraphicsContext(graphicsWindow.get());
+
+	//SGCT will handle the near and far planes
+	mViewer->getCamera()->setComputeNearFarMode(osgUtil::CullVisitor::DO_NOT_COMPUTE_NEAR_FAR);
+	mViewer->getCamera()->setClearColor( osg::Vec4( 0.0f, 0.0f, 0.0f, 0.0f) );
+
+	//disable osg from clearing the buffers that will be done by SGCT
+	GLbitfield tmpMask = mViewer->getCamera()->getClearMask();
+	mViewer->getCamera()->setClearMask(tmpMask & (~(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)));
+
+	mViewer->setSceneData(mRootNode.get());
+}
+
+void setupLightSource()
+{
+	osg::Light * light0 = new osg::Light;
+	osg::Light * light1 = new osg::Light;
+	osg::LightSource* lightSource0 = new osg::LightSource;
+	osg::LightSource* lightSource1 = new osg::LightSource;
+
+	light0->setLightNum( 0 );
+	light0->setPosition( osg::Vec4( 5.0f, 5.0f, 10.0f, 1.0f ) );
+	light0->setAmbient( osg::Vec4( 0.3f, 0.3f, 0.3f, 1.0f ) );
+	light0->setDiffuse( osg::Vec4( 0.8f, 0.8f, 0.8f, 1.0f ) );
+	light0->setSpecular( osg::Vec4( 0.1f, 0.1f, 0.1f, 1.0f ) );
+	light0->setConstantAttenuation( 1.0f );
+
+	lightSource0->setLight( light0 );
+        lightSource0->setLocalStateSetModes( osg::StateAttribute::ON );
+	lightSource0->setStateSetModes( *(mRootNode->getOrCreateStateSet()), osg::StateAttribute::ON );
+
+	light1->setLightNum( 1 );
+	light1->setPosition( osg::Vec4( -5.0f, -2.0f, 10.0f, 1.0f ) );
+	light1->setAmbient( osg::Vec4( 0.2f, 0.2f, 0.2f, 1.0f ) );
+	light1->setDiffuse( osg::Vec4( 0.5f, 0.5f, 0.5f, 1.0f ) );
+	light1->setSpecular( osg::Vec4( 0.2f, 0.2f, 0.2f, 1.0f ) );
+	light1->setConstantAttenuation( 1.0f );
+
+	lightSource1->setLight( light1 );
+        lightSource1->setLocalStateSetModes( osg::StateAttribute::ON );
+	lightSource1->setStateSetModes( *(mRootNode->getOrCreateStateSet()), osg::StateAttribute::ON );
+
+	mRootNode->addChild( lightSource0 );
+	mRootNode->addChild( lightSource1 );
+}
+
+</file>
+{{indexmenu_n>9}}
+~~DISCUSSION:on~~
+{{tag>Cluster C++ OpenGL VR OSG Open_Scene_Graph Airplane_model}}

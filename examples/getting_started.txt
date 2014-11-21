@@ -1,0 +1,82 @@
+====== Getting started in the computer labs at campus ======
+This guide shows how to get started with SGCT and OSG at campus.
+Code<nowiki>::</nowiki>Blocks and MinGW should be installed in most of the computer labs at campus,
+however the MinGW version installed is very old (the IT department will update that next between the semesters).
+As a workaround a newer version of MinGW, SGCT and OSG is located at the student network share (S:).
+
+  * S:\MinGW\MinGW-4.7.0
+  * S:\SGCT\SGCT-0.9.5
+  * S:\OSG\OpenSceneGraph-3.0.1-MinGW-4.7.0
+
+To change the compiler (MinGW) version in Code<nowiki>::</nowiki>Blocks do the following:\\ 
+  - Start code<nowiki>::</nowiki>blocks
+  - In the menu go to Settings->Compiler and debugger settings...
+  - View the Toolchain executables tab
+  - Set the Compiler's installation directory to: S:\MinGW\MinGW-4.7.0 and press OK.
+
+{{:develop:sgcttutorials:campus_compiler_settings.png|}}
+
+The downside of having a compiler on a network share is longer compiling time. Now for each project set the search directories to:
+  * S:\SGCT\SGCT-0.9.5\include (Compiler tab)
+  * S:\SGCT\SGCT-0.9.5\lib\mingw (Linker tab)
+
+<WRAP tip>Code<nowiki>::</nowiki>Blocks uses XML-based project files (.cbp) and it's faster to open them in a text-editor
+like [[http://notepad-plus-plus.org/|notepad++]] and replace the search directories there.</WRAP> 
+
+If you use OSG add the following paths:
+  * S:\OSG\OpenSceneGraph-3.0.1-MinGW-4.7.0\include (Compiler tab)
+  * S:\OSG\OpenSceneGraph-3.0.1-MinGW-4.7.0\lib (Linker tab)
+
+OSG uses dynamic linking and to access all dll-files you need at run-time, simply add the OSG's and MinGW's bin folder to the path variable in a bat file. 
+Then double-click the bat file to start your application (you might need to replace //osgExample.exe// part to the name of your file).
+
+<file cmd run.bat>
+setlocal 
+path=S:\OSG\OpenSceneGraph-3.0.1-MinGW-4.7.0\bin;%path%
+path=S:\MinGW\MinGW-4.7.0\bin;%path%
+osgExample.exe -config single.xml
+endlocal
+pause¨
+
+</file>
+
+======= Debugging =======
+To debug your code using mingw you can use the gdb debugger (same as under linux). Use the following bat file to open a gdb shell.
+
+<file cmd debug.bat>
+setlocal 
+path=S:\OSG\OpenSceneGraph-3.0.1-MinGW-4.7.0\bin;%path%
+path=S:\MinGW\MinGW-4.7.0\bin;%path%
+gdb osgExample_d.exe
+endlocal
+pause
+
+</file>
+
+When you are in gdb you can start the application with the run command and the parameters you want to pass to the application.
+Note that you need to run your debug build.
+
+<code>
+run -config single.xml
+
+</code>
+If the application crashes simply use the 'where' command to get the call stack for locating your error.
+Other commands can be found by typing help. To quit simply type quit or just q.
+
+To better illustrate the usage of gdb an error has been added into the code on purpose:
+
+<code cpp>
+int * tmpPtr = NULL;
+tmpPtr[45] = 46; //error - trying to access a memory location that isn't allocated
+
+</code>
+
+{{:develop:sgcttutorials:gdb1.png|}}
+
+{{:develop:sgcttutorials:gdb2.png|}}
+ 
+{{:develop:sgcttutorials:gdb3.png|}}
+ 
+
+~~DISCUSSION:on~~
+{{tag>Compile gcc g++ SGCT OpenGL Campus Code_Blocks}}
